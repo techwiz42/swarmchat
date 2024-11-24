@@ -116,9 +116,9 @@ def create_app() -> FastAPI:
     # Initialize FastAPI app
     app = FastAPI(title="SwarmChat API", version="1.0.0")
 
-    @app.on_event("startup")
-    async def startup_event():
-        await create_tables()
+    #@app.on_event("startup")
+    #async def startup_event():
+    #    await create_tables()
 
     # Add CORS middleware
     app.add_middleware(

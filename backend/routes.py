@@ -13,6 +13,7 @@ import logging
 from dotenv import load_dotenv
 import json
 import os
+from manager import SwarmChatManager
 from database import db_manager, User, Message, UserInteraction, LoginHistory
 from sqlalchemy.orm import Session
 from models import TokenResponse
@@ -43,20 +44,25 @@ logger = logging.getLogger(__name__)
 # Create router instance
 router = APIRouter()
 
+async def get_db():
+    """Get database session."""
+    # 1. Create a new database session
+    db = db_manager.get_session()
+    
+    try:
+        # 2. Yield the session for use in the route
+        yield db
+    finally:
+        # 3. Always close the session, even if there's an error
+        #FIXME - the db object doesn't have a close method
+        #db.close()
+        print("Fix this or there will be trouble...")
+
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-# Database dependency
-def get_db():
-    """Get database session."""
-    db = db_manager.get_session()
-    with db:
-        yield db
-
-# Pydantic models
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
@@ -105,6 +111,8 @@ AGENT_TRANSFERS = {
     "yogi_bhajan": transfer_to_yogi_bhajan,
     "mencken": transfer_to_mencken
 }
+
+chat_manager = SwarmChatManager()
 
 @router.post("/api/token", response_model=TokenResponse)
 async def login_for_access_token(

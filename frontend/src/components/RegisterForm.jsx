@@ -77,7 +77,7 @@ const RegisterForm = ({ onRegister }) => {
       <Card className="p-6 space-y-6">
         <div className="flex justify-between items-center flex-col gap-4">
           <h2 className="text-2xl font-bold">Create Account</h2>
-          <h3 className="text-blue-500">Join the Swarm Chat Community</h3>
+          <h3 className="text-blue-500">Join the Swarm</h3>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -239,6 +239,18 @@ class DatabaseManager:
                 chat_state = result.scalars().first()
                 if chat_state:
                     await session.delete(chat_state)
-
+    @asynccontextmanager
+    async def get_db():
+        """Async context manager for DB session lifecycle."""
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session  # Provide the session for use in routes
+            except Exception as e:
+                await session.rollback()  # Rollback in case of exception
+                raise e
+            finally:
+                # Ensure to commit if everything is fine, otherwise rollback
+                await session.commit()  # Commit any pending transactions
+                # No need to explicitly close, it's done automatically
 # Create database manager instance
 db_manager = DatabaseManager()
