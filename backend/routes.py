@@ -14,6 +14,8 @@ from dotenv import load_dotenv
 import json
 import os
 from database import db_manager, User, Message, UserInteraction, LoginHistory
+from sqlalchemy.orm import Session
+from models import TokenResponse
 from auth import auth_manager
 from agents import (
     moderator,
@@ -46,6 +48,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Database dependency
+def get_db():
+    """Get database session."""
+    db = db_manager.get_session()
+    with db:
+        yield db
 
 # Pydantic models
 class UserCreate(BaseModel):
@@ -96,6 +105,53 @@ AGENT_TRANSFERS = {
     "yogi_bhajan": transfer_to_yogi_bhajan,
     "mencken": transfer_to_mencken
 }
+
+@router.post("/api/token", response_model=TokenResponse)
+async def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    """Handle user login and token generation."""
+    try:
+        logger.info(f"Login attempt for user: {form_data.username}")
+        
+        user = await auth_manager.authenticate_user(
+            form_data.username,
+            form_data.password
+        )
+        
+        if not user:
+            logger.warning(f"Failed login attempt for user: {form_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Create tokens
+        chat_token = await chat_manager.create_session(user.username)
+        access_token = auth_manager.create_access_token(
+            data={"sub": user.username}
+        )
+        
+        # Log the response
+        response_data = {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "chat_token": chat_token,
+            "username": user.username
+        }
+        logger.info(f"Successful login response for user {user.username}")
+        
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 # Registration endpoint
 @router.post("/api/register", response_model=dict)
