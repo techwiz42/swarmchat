@@ -4,6 +4,7 @@ import IntroDialog from './IntroDialog.jsx';
 import Header from './Header.jsx';
 import Footer from './Footer.jsx';
 import LoginForm from './LoginForm.jsx';
+import RegisterForm from './RegisterForm.jsx';
 import ChatInterface from './ChatInterface.jsx';
 import ActivityIndicator from './ActivityIndicator.jsx';
 
@@ -18,8 +19,11 @@ const SwarmChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [accessToken, setAccessToken] = useState(null);
+  const [chatToken, setChatToken] = useState(null);
+  
   const messagesEndRef = useRef(null);
-  const [token, setToken] = useState(null);
   const speechHandlerRef = useRef(null);
   const { isTTSEnabled, isListening, setTTSEnabled, setListening } = useSpeechStore();
 
@@ -41,6 +45,21 @@ const SwarmChat = () => {
   }, []);
 
   useEffect(() => {
+    // Check for saved tokens in localStorage
+    const savedAccessToken = localStorage.getItem('accessToken');
+    const savedChatToken = localStorage.getItem('chatToken');
+    const savedUsername = localStorage.getItem('username');
+    
+    if (savedAccessToken && savedChatToken && savedUsername) {
+      setAccessToken(savedAccessToken);
+      setChatToken(savedChatToken);
+      setUsername(savedUsername);
+      setIsConnected(true);
+      fetchHistory(savedAccessToken);
+    }
+  }, []);
+
+  useEffect(() => {
     scrollToBottom();
   }, [messages]);
 
@@ -48,45 +67,65 @@ const SwarmChat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleLogin = async (e) => {
+  const handleLogin = async (e, username, password) => {
     e?.preventDefault();
-    if (!username.trim()) return;
+    if (!username.trim() || !password.trim()) return;
 
     try {
       setIsLoading(true);
       setError(null);
       
-      const credentials = btoa(`${username}:dummy`);
+      const formData = new URLSearchParams();
+      formData.append('username', username);
+      formData.append('password', password);
       
-      const response = await fetch(`${API_BASE_URL}/login`, {
+      const response = await fetch(`${API_BASE_URL}/token`, {
         method: 'POST',
         headers: {
-          'Authorization': `Basic ${credentials}`,
-          'Content-Type': 'application/json'
-        }
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData
       });
 
       if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Login failed: ${errorData}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Login failed');
       }
 
       const data = await response.json();
-      setToken(data.token);
+      setAccessToken(data.access_token);
+      setChatToken(data.chat_token);
+      setUsername(data.username);
       setIsConnected(true);
-      await fetchHistory(data.token);
+
+      // Save tokens and username
+      localStorage.setItem('accessToken', data.access_token);
+      localStorage.setItem('chatToken', data.chat_token);
+      localStorage.setItem('username', data.username);
+
+      await fetchHistory(data.access_token);
     } catch (err) {
-      setError(`Connection error: ${err.message}`);
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchHistory = async (currentToken) => {
+  const handleRegistration = async (userData) => {
+    try {
+      // After successful registration, automatically log in
+      await handleLogin(null, userData.username, userData.password);
+      setIsRegistering(false);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const fetchHistory = async (token) => {
     try {
       const response = await fetch(`${API_BASE_URL}/history`, {
         headers: {
-          'Authorization': `Bearer ${currentToken}`
+          'Authorization': `Bearer ${token}`
         }
       });
 
@@ -104,7 +143,7 @@ const SwarmChat = () => {
   const handleSendMessage = async (e, autoSend = false) => {
     e?.preventDefault();
     const currentMessage = inputMessage;
-    if (!currentMessage.trim() || !token || isLoading) return;
+    if (!currentMessage.trim() || !accessToken || !chatToken || isLoading) return;
 
     try {
       setIsLoading(true);
@@ -116,7 +155,8 @@ const SwarmChat = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${accessToken}`,
+          'X-Chat-Token': chatToken
         },
         body: JSON.stringify({ content: currentMessage })
       });
@@ -149,15 +189,38 @@ const SwarmChat = () => {
     }
   };
 
-  const handleLogout = () => {
-    setIsConnected(false);
-    setToken(null);
-    setMessages([]);
-    setUsername('');
-    setError(null);
-    if (speechHandlerRef.current && isListening) {
-      speechHandlerRef.current.stopListening();
-      setListening(false);
+  const handleLogout = async () => {
+    try {
+      // Call logout endpoint if it exists
+      if (accessToken && chatToken) {
+        await fetch(`${API_BASE_URL}/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'X-Chat-Token': chatToken
+          }
+        });
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      // Clean up local state regardless of logout request success
+      setIsConnected(false);
+      setAccessToken(null);
+      setChatToken(null);
+      setMessages([]);
+      setUsername('');
+      setError(null);
+      
+      // Clear stored tokens
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('chatToken');
+      localStorage.removeItem('username');
+      
+      if (speechHandlerRef.current && isListening) {
+        speechHandlerRef.current.stopListening();
+        setListening(false);
+      }
     }
   };
 
@@ -182,6 +245,11 @@ const SwarmChat = () => {
     }
   };
 
+  const toggleRegistration = () => {
+    setIsRegistering(!isRegistering);
+    setError(null);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       <IntroDialog isOpen={isIntroOpen} onOpenChange={setIsIntroOpen} />
@@ -199,18 +267,26 @@ const SwarmChat = () => {
 
       <div className="flex-1 container mx-auto max-w-4xl p-4">
         {!isConnected ? (
-          <LoginForm
-            username={username}
-            isLoading={isLoading}
-            isListening={isListening}
-            isTTSEnabled={isTTSEnabled}
-            isSpeaking={isSpeaking}
-            error={error}
-            onUsernameChange={(e) => setUsername(e.target.value)}
-            onSubmit={handleLogin}
-            onToggleSpeech={toggleSpeechRecognition}
-            onToggleTTS={toggleTTS}
-          />
+          isRegistering ? (
+            <RegisterForm
+              onRegister={handleRegistration}
+              onCancel={toggleRegistration}
+            />
+          ) : (
+            <LoginForm
+              username={username}
+              isLoading={isLoading}
+              isListening={isListening}
+              isTTSEnabled={isTTSEnabled}
+              isSpeaking={isSpeaking}
+              error={error}
+              onUsernameChange={(e) => setUsername(e.target.value)}
+              onSubmit={handleLogin}
+              onToggleSpeech={toggleSpeechRecognition}
+              onToggleTTS={toggleTTS}
+              onRegisterClick={toggleRegistration}
+            />
+          )
         ) : (
           <ChatInterface
             messages={messages}

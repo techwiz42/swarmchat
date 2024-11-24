@@ -13,10 +13,13 @@ from logging.handlers import RotatingFileHandler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException, Depends, Request
 import uvicorn
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
-from swarm import Swarm, Agent
 
+# Import our components
+from database import db_manager
+from auth import auth_manager
+from routes import router
 from agents import (
     moderator,
     transfer_to_hemmingway,
@@ -96,11 +99,9 @@ def setup_logging():
     uvicorn_logger.addHandler(uvicorn_access_handler)
     uvicorn_logger.setLevel(logging.INFO)
 
-# Import routes after logging is configured
-from routes import router
-
 def create_app() -> FastAPI:
-    app = FastAPI()
+    # Initialize FastAPI app
+    app = FastAPI(title="SwarmChat API", version="1.0.0")
     
     # Add CORS middleware
     app.add_middleware(
@@ -123,26 +124,18 @@ def create_app() -> FastAPI:
     
     return app
 
-# Create the FastAPI app
-app = create_app()
-
 # Add request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    #print(f"\n{'='*50}")
-    #print(f"Request: {request.method} {request.url}")
-    #print(f"Headers: {request.headers}")
-    
     if request.method == "POST":
         body = await request.body()
         try:
-            print(f"Body: {body.decode()}")
+            logger = logging.getLogger(__name__)
+            logger.info(f"Request Body: {body.decode()}")
         except:
-            print(f"Body: {body}")
+            pass
     
     response = await call_next(request)
-    #print(f"Status Code: {response.status_code}")
-    #print(f"{'='*50}\n")
     return response
 
 def main():
@@ -150,13 +143,24 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
     
-    # Print OpenAI API key status
-    print("OpenAI API Key status:", "Present" if os.getenv("OPENAI_API_KEY") else "Missing")
-    print("Key starts with:", os.getenv("OPENAI_API_KEY")[:4] + "..." if os.getenv("OPENAI_API_KEY") else "None")
+    # Print environment status
+    logger.info("Starting SwarmChat server...")
+    logger.info("OpenAI API Key status: %s", "Present" if os.getenv("OPENAI_API_KEY") else "Missing")
+    logger.info("Database URL: %s", os.getenv("DATABASE_URL", "sqlite:///./swarmchat.db"))
+    logger.info("Environment: %s", os.getenv("ENVIRONMENT", "development"))
+    
+    # Initialize database
+    try:
+        logger.info("Initializing database...")
+        db_manager.create_tables()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error("Database initialization failed", exc_info=True)
+        raise
     
     # Create and run app
-    logger.info("Starting Swarm Chat server...")
     try:
+        app = create_app()
         config = uvicorn.Config(
             app,
             host="0.0.0.0",

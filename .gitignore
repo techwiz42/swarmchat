@@ -6,4 +6,4 @@ nohup.out
 .*.swp
 **/.cache/
 *.OLD
-*/.env
+.env

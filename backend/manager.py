@@ -19,6 +19,14 @@ class SwarmChatManager:
         self.tokens_lock: asyncio.Lock = asyncio.Lock()
         logger.info("SwarmChatManager initialized")
 
+   async def cleanup_session(self, token: str):
+        """Clean up user session on logout."""
+        async with self.tokens_lock:
+            username = self.tokens.pop(token, None)
+            if username:
+                async with self.sessions_lock:
+                    self.sessions.pop(username, None)
+
     async def log_access(self, token: str, request: Request, message_type: str, content: str):
         """Log access information"""
         try:
