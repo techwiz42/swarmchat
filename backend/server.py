@@ -15,6 +15,11 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 import uvicorn
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
+from dotenv import load_dotenv
+from config import JWT_SECRET_KEY, DATABASE_URL, ENVIRONMENT
+
+# Load environment variables
+load_dotenv()
 
 # Import our components
 from database import db_manager
@@ -99,10 +104,22 @@ def setup_logging():
     uvicorn_logger.addHandler(uvicorn_access_handler)
     uvicorn_logger.setLevel(logging.INFO)
 
+async def create_tables():
+    try:
+        await db_manager.create_tables()
+        logging.info("Database tables created successfully")
+    except Exception as e:
+        logging.error(f"Error creating database tables: {e}")
+        raise
+
 def create_app() -> FastAPI:
     # Initialize FastAPI app
     app = FastAPI(title="SwarmChat API", version="1.0.0")
-    
+
+    @app.on_event("startup")
+    async def startup_event():
+        await create_tables()
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -118,25 +135,47 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+   
+    def redact_sensitive_data(body_str: str) -> str:
+        """Redact sensitive information from request bodies."""
+        try:
+            # Try to parse as JSON first
+            body = json.loads(body_str)
+            sensitive_fields = {'password', 'confirmPassword', 'token', 'access_token', 'refresh_token', 'api_key'}
+        
+            for field in sensitive_fields:
+                if field in body:
+                    body[field] = '[REDACTED]'
+            return json.dumps(body)
+        except json.JSONDecodeError:
+            # If not JSON, try to handle form-urlencoded
+            if 'password=' in body_str:
+                # Use regex to replace password value
+                body_str = re.sub(r'password=([^&]*)', 'password=[REDACTED]', body_str)
+            return body_str
+
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        if request.method == "POST":
+            body = await request.body()
+            try:
+                body_str = body.decode()
+                # Redact sensitive data before logging
+                safe_body = redact_sensitive_data(body_str)
+                logger = logging.getLogger(__name__)
+                logger.info(f"Request Body: {safe_body}")
+                # We need to restore the body content for the request to continue processing
+                await request.json()
+            except:
+                pass
+    
+        response = await call_next(request)
+        return response
     
     # Include routes
     app.include_router(router)
     
     return app
-
-# Add request logging middleware
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    if request.method == "POST":
-        body = await request.body()
-        try:
-            logger = logging.getLogger(__name__)
-            logger.info(f"Request Body: {body.decode()}")
-        except:
-            pass
-    
-    response = await call_next(request)
-    return response
 
 def main():
     # Set up logging

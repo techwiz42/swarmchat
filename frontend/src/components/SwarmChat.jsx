@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { SpeechHandler, useSpeechStore } from '../lib/SpeechHandler';
 import IntroDialog from './IntroDialog.jsx';
 import Header from './Header.jsx';
@@ -11,6 +12,8 @@ import ActivityIndicator from './ActivityIndicator.jsx';
 const API_BASE_URL = '/api';
 
 const SwarmChat = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isIntroOpen, setIsIntroOpen] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [username, setUsername] = useState('');
@@ -19,7 +22,6 @@ const SwarmChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isRegistering, setIsRegistering] = useState(false);
   const [accessToken, setAccessToken] = useState(null);
   const [chatToken, setChatToken] = useState(null);
   
@@ -56,8 +58,17 @@ const SwarmChat = () => {
       setUsername(savedUsername);
       setIsConnected(true);
       fetchHistory(savedAccessToken);
+      navigate('/'); // Redirect to chat if already logged in
     }
-  }, []);
+  }, [navigate]);
+
+  const handleIntroDialogClose = (isOpen) => {
+    setIsIntroOpen(isOpen);
+    if (!isOpen) {
+      // When intro dialog is closed, always navigate to login
+      navigate('/login');
+    }
+  };
 
   useEffect(() => {
     scrollToBottom();
@@ -104,20 +115,11 @@ const SwarmChat = () => {
       localStorage.setItem('username', data.username);
 
       await fetchHistory(data.access_token);
+      navigate('/'); // Redirect to chat after successful login
     } catch (err) {
       setError(err.message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleRegistration = async (userData) => {
-    try {
-      // After successful registration, automatically log in
-      await handleLogin(null, userData.username, userData.password);
-      setIsRegistering(false);
-    } catch (err) {
-      setError(err.message);
     }
   };
 
@@ -189,6 +191,16 @@ const SwarmChat = () => {
     }
   };
 
+  const handleRegistration = async (userData) => {
+    try {
+      // After successful registration, automatically log in
+      await handleLogin(null, userData.username, userData.password);
+      navigate('/'); // Redirect to chat after successful registration
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       // Call logout endpoint if it exists
@@ -221,6 +233,8 @@ const SwarmChat = () => {
         speechHandlerRef.current.stopListening();
         setListening(false);
       }
+      
+      navigate('/login'); // Redirect to login after logout
     }
   };
 
@@ -245,9 +259,50 @@ const SwarmChat = () => {
     }
   };
 
-  const toggleRegistration = () => {
-    setIsRegistering(!isRegistering);
-    setError(null);
+  // Render different components based on route and auth state
+  const renderContent = () => {
+    if (isConnected) {
+      return (
+        <ChatInterface
+          messages={messages}
+          inputMessage={inputMessage}
+          isLoading={isLoading}
+          error={error}
+          onInputChange={(e) => setInputMessage(e.target.value)}
+          onSubmit={handleSendMessage}
+          messagesEndRef={messagesEndRef}
+        >
+          <ActivityIndicator 
+            isListening={isListening}
+            isLoading={isLoading}
+            isSpeaking={isSpeaking}
+          />
+        </ChatInterface>
+      );
+    }
+
+    if (location.pathname === '/register') {
+      return (
+        <RegisterForm
+          onRegister={handleRegistration}
+        />
+      );
+    }
+
+    return (
+      <LoginForm
+        username={username}
+        isLoading={isLoading}
+        isListening={isListening}
+        isTTSEnabled={isTTSEnabled}
+        isSpeaking={isSpeaking}
+        error={error}
+        onUsernameChange={(e) => setUsername(e.target.value)}
+        onSubmit={handleLogin}
+        onToggleSpeech={toggleSpeechRecognition}
+        onToggleTTS={toggleTTS}
+      />
+    );
   };
 
   return (
@@ -266,44 +321,7 @@ const SwarmChat = () => {
       />
 
       <div className="flex-1 container mx-auto max-w-4xl p-4">
-        {!isConnected ? (
-          isRegistering ? (
-            <RegisterForm
-              onRegister={handleRegistration}
-              onCancel={toggleRegistration}
-            />
-          ) : (
-            <LoginForm
-              username={username}
-              isLoading={isLoading}
-              isListening={isListening}
-              isTTSEnabled={isTTSEnabled}
-              isSpeaking={isSpeaking}
-              error={error}
-              onUsernameChange={(e) => setUsername(e.target.value)}
-              onSubmit={handleLogin}
-              onToggleSpeech={toggleSpeechRecognition}
-              onToggleTTS={toggleTTS}
-              onRegisterClick={toggleRegistration}
-            />
-          )
-        ) : (
-          <ChatInterface
-            messages={messages}
-            inputMessage={inputMessage}
-            isLoading={isLoading}
-            error={error}
-            onInputChange={(e) => setInputMessage(e.target.value)}
-            onSubmit={handleSendMessage}
-            messagesEndRef={messagesEndRef}
-          >
-            <ActivityIndicator 
-              isListening={isListening}
-              isLoading={isLoading}
-              isSpeaking={isSpeaking}
-            />
-          </ChatInterface>
-        )}
+        {renderContent()}
       </div>
 
       <Footer />

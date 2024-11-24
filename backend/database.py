@@ -1,306 +1,244 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text, Index
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, validates
-from sqlalchemy.sql import func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.future import select
 from datetime import datetime
-import bcrypt
-import logging
-from typing import Optional
 import os
-import re
+from typing import Optional, List, Dict
+import json
+from contextlib import asynccontextmanager
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Get database URL from environment or use default PostgreSQL
+DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/swarmchat"
+)
 
-# Create SQLAlchemy base class
+# Create async engine
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=True
+)
+
+# Create async session factory
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
+
 Base = declarative_base()
 
+# Models
 class User(Base):
-    __tablename__ = 'users'
-    
-    id = Column(Integer, primary_key=True)
-    username = Column(String(50), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=True)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())
-    last_login = Column(DateTime)
-    is_active = Column(String(1), default='Y')
-    
-    # Relationships
-    messages = relationship("Message", back_populates="user", cascade="all, delete-orphan")
-    interactions = relationship("UserInteraction", back_populates="user", cascade="all, delete-orphan")
-    login_history = relationship("LoginHistory", back_populates="user", cascade="all, delete-orphan")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_username', 'username'),
-        Index('idx_email', 'email'),
-    )
-    
-    @validates('username')
-    def validate_username(self, key, username):
-        if not username:
-            raise ValueError("Username cannot be empty")
-        if len(username) < 3:
-            raise ValueError("Username must be at least 3 characters long")
-        if not re.match("^[a-zA-Z0-9_-]+$", username):
-            raise ValueError("Username can only contain letters, numbers, underscores, and hyphens")
-        return username
+    __tablename__ = "users"
 
-    @validates('email')
-    def validate_email(self, key, email):
-        if email:  # Email is optional
-            if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
-                raise ValueError("Invalid email format")
-        return email
-    
-    @staticmethod
-    def hash_password(password: str) -> str:
-        if len(password) < 8:
-            raise ValueError("Password must be at least 8 characters long")
-        salt = bcrypt.gensalt()
-        return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
-    
-    def verify_password(self, password: str) -> bool:
-        try:
-            return bcrypt.checkpw(
-                password.encode('utf-8'),
-                self.password_hash.encode('utf-8')
-            )
-        except Exception as e:
-            logger.error(f"Password verification error: {str(e)}")
-            return False
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    email = Column(String, unique=True, index=True)
+    hashed_password = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
 
 class Message(Base):
-    __tablename__ = 'messages'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    role = Column(String(20), nullable=False)  # 'user' or 'assistant'
-    content = Column(Text, nullable=False)
-    timestamp = Column(DateTime, server_default=func.now())
-    interaction_id = Column(Integer, ForeignKey('user_interactions.id', ondelete='CASCADE'), nullable=True)
-    
-    # Relationships
-    user = relationship("User", back_populates="messages")
-    interaction = relationship("UserInteraction", back_populates="messages")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_user_timestamp', 'user_id', 'timestamp'),
-        Index('idx_interaction', 'interaction_id'),
-    )
-    
-    @validates('role')
-    def validate_role(self, key, role):
-        if role not in ['user', 'assistant']:
-            raise ValueError("Role must be either 'user' or 'assistant'")
-        return role
+    __tablename__ = "messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    content = Column(Text)
+    response = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 
 class UserInteraction(Base):
-    __tablename__ = 'user_interactions'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    ip_address = Column(String(45), nullable=False)  # Support both IPv4 and IPv6
-    session_id = Column(String(255), nullable=False)  # Store chat token
-    prompt = Column(Text, nullable=False)
-    response = Column(Text, nullable=True)
-    agent_name = Column(String(100), nullable=True)  # Store which agent responded
-    start_time = Column(DateTime, server_default=func.now())
-    end_time = Column(DateTime, nullable=True)
-    status = Column(String(50), nullable=False)  # 'completed', 'failed', 'processing'
-    error_message = Column(Text, nullable=True)
-    
-    # Relationships
-    user = relationship("User", back_populates="interactions")
-    messages = relationship("Message", back_populates="interaction", cascade="all, delete-orphan")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_user_session', 'user_id', 'session_id'),
-        Index('idx_start_time', 'start_time'),
-    )
-    
-    @validates('status')
-    def validate_status(self, key, status):
-        if status not in ['completed', 'failed', 'processing']:
-            raise ValueError("Invalid status value")
-        return status
+    __tablename__ = "user_interactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    interaction_type = Column(String)
+    details = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 
 class LoginHistory(Base):
-    __tablename__ = 'login_history'
-    
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    ip_address = Column(String(45), nullable=False)
-    timestamp = Column(DateTime, server_default=func.now())
-    status = Column(String(20), nullable=False)  # 'success' or 'failed'
-    user_agent = Column(Text, nullable=True)
-    
-    # Relationship
-    user = relationship("User", back_populates="login_history")
-    
-    # Indexes
-    __table_args__ = (
-        Index('idx_user_login', 'user_id', 'timestamp'),
-        Index('idx_ip_address', 'ip_address'),
-    )
-    
-    @validates('status')
-    def validate_status(self, key, status):
-        if status not in ['success', 'failed']:
-            raise ValueError("Status must be either 'success' or 'failed'")
-        return status
+    __tablename__ = "login_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    login_time = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String)
+    success = Column(Boolean, default=True)
+
+class ChatToken(Base):
+    __tablename__ = "chat_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    token = Column(String, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_valid = Column(Boolean, default=True)
+
+class ChatHistory(Base):
+    __tablename__ = "chat_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    message = Column(Text)
+    response = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+class ChatState(Base):
+    __tablename__ = "chat_states"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    state_data = Column(Text)  # JSON string of the state
+    updated_at = Column(DateTime, default=datetime.utcnow)
 
 class DatabaseManager:
-    def __init__(self):
-        self.setup_database()
-        
-    def setup_database(self):
-        """Initialize database connection and session factory"""
-        try:
-            database_url = os.getenv('DATABASE_URL', 'sqlite:///./swarmchat.db')
-        
-            # Configure engine arguments based on database type
-            engine_args = {}
-        
-            if database_url.startswith('sqlite'):
-                # SQLite-specific configuration
-                engine_args = {
-                    'connect_args': {'check_same_thread': False}
-                }
-            else:
-                # Configuration for other databases (PostgreSQL, MySQL, etc.)
-                engine_args = {
-                    'pool_size': 5,
-                    'max_overflow': 10,
-                    'pool_timeout': 30
-                }
-        
-            self.engine = create_engine(
-                database_url,
-                **engine_args
-            )
-        
-            self.SessionLocal = sessionmaker(
-                bind=self.engine,
-                autocommit=False,
-                autoflush=False
-            )
-        
-            logger.info(f"Database initialized with URL: {database_url}")
-        
-        except Exception as e:
-            logger.error(f"Database initialization error: {str(e)}")
-            raise   
+    @asynccontextmanager
+    async def get_session(self) -> AsyncSession:
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.commit()
+            except:
+                await session.rollback()
+                raise
 
-    def create_tables(self):
-        """Create all database tables"""
-        try:
-            Base.metadata.create_all(self.engine)
-            logger.info("Database tables created successfully")
-        except Exception as e:
-            logger.error(f"Error creating database tables: {str(e)}")
-            raise
-    
-    def get_session(self):
-        """Get a new database session"""
-        return self.SessionLocal()
-    
-    async def log_interaction(
-        self,
-        db_session,
-        user_id: int,
-        ip_address: str,
-        session_id: str,
-        prompt: str,
-        agent_name: str = None
-    ) -> UserInteraction:
-        """Create a new interaction record"""
-        try:
-            interaction = UserInteraction(
-                user_id=user_id,
-                ip_address=ip_address,
-                session_id=session_id,
-                prompt=prompt,
-                agent_name=agent_name,
-                status='processing'
+    async def create_tables(self):
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+    async def get_user_by_username(self, username: str) -> Optional[User]:
+        async with self.get_session() as session:
+            result = await session.execute(
+                select(User).where(User.username == username)
             )
-            db_session.add(interaction)
-            db_session.commit()
-            db_session.refresh(interaction)
-            return interaction
-            
-        except SQLAlchemyError as e:
-            db_session.rollback()
-            logger.error(f"Error logging interaction: {str(e)}")
-            raise
-    
-    async def update_interaction(
-        self,
-        db_session,
-        interaction_id: int,
-        response: str = None,
-        error_message: str = None,
-        status: str = 'completed'
-    ):
-        """Update an existing interaction record"""
-        try:
-            interaction = db_session.query(UserInteraction).get(interaction_id)
-            if interaction:
-                interaction.response = response
-                interaction.error_message = error_message
-                interaction.status = status
-                interaction.end_time = datetime.utcnow()
-                db_session.commit()
-            else:
-                logger.warning(f"No interaction found with id: {interaction_id}")
-                
-        except SQLAlchemyError as e:
-            db_session.rollback()
-            logger.error(f"Error updating interaction: {str(e)}")
-            raise
-    
-    async def log_login(
-        self,
-        db_session,
-        user_id: Optional[int],
-        ip_address: str,
-        status: str,
-        user_agent: str = None
-    ):
-        """Log login attempt"""
-        try:
-            if user_id:  # Only create login history for valid users
-                login_record = LoginHistory(
-                    user_id=user_id,
-                    ip_address=ip_address,
-                    status=status,
-                    user_agent=user_agent
+            return result.scalars().first()
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        async with self.get_session() as session:
+            result = await session.execute(
+                select(User).where(User.email == email)
+            )
+            return result.scalars().first()
+
+    async def create_user(self, username: str, email: str, hashed_password: str, created_at: datetime) -> User:
+        async with self.get_session() as session:
+            new_user = User(
+                username=username,
+                email=email,
+                hashed_password=hashed_password,
+                created_at=created_at
+            )
+            session.add(new_user)
+            return new_user
+
+    async def store_chat_token(self, user_id: int, token: str) -> None:
+        async with self.get_session() as session:
+            chat_token = ChatToken(user_id=user_id, token=token)
+            session.add(chat_token)
+
+    async def invalidate_chat_token(self, token: str) -> None:
+        async with self.get_session() as session:
+            result = await session.execute(
+                select(ChatToken).where(ChatToken.token == token)
+            )
+            chat_token = result.scalars().first()
+            if chat_token:
+                chat_token.is_valid = False
+
+    async def validate_chat_token(self, token: str) -> bool:
+        async with self.get_session() as session:
+            result = await session.execute(
+                select(ChatToken).where(
+                    ChatToken.token == token,
+                    ChatToken.is_valid == True
                 )
-                db_session.add(login_record)
-                
-                if status == 'success':
-                    user = db_session.query(User).get(user_id)
-                    if user:
-                        user.last_login = datetime.utcnow()
-                
-                db_session.commit()
-                
-        except SQLAlchemyError as e:
-            db_session.rollback()
-            logger.error(f"Error logging login: {str(e)}")
-            raise
+            )
+            return result.scalars().first() is not None
+
+    async def get_chat_history(self, username: str) -> List[Dict]:
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if not user:
+                return []
+
+            result = await session.execute(
+                select(Message)
+                .where(Message.user_id == user.id)
+                .order_by(Message.timestamp)
+            )
+            history = result.scalars().all()
+
+            return [
+                {
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": h.content if i % 2 == 0 else h.response
+                }
+                for i, h in enumerate(history)
+            ]
+
+    async def add_to_chat_history(self, username: str, message: str, response: str) -> None:
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if user:
+                chat_history = Message(
+                    user_id=user.id,
+                    content=message,
+                    response=response
+                )
+                session.add(chat_history)
+
+    async def get_user_chat_state(self, username: str) -> Dict:
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if not user:
+                return {}
+
+            result = await session.execute(
+                select(ChatState).where(ChatState.user_id == user.id)
+            )
+            state = result.scalars().first()
+
+            if state and state.state_data:
+                try:
+                    return json.loads(state.state_data)
+                except json.JSONDecodeError:
+                    return {}
+            return {}
+
+    async def update_user_chat_state(self, username: str, state: Dict) -> None:
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if user:
+                result = await session.execute(
+                    select(ChatState).where(ChatState.user_id == user.id)
+                )
+                chat_state = result.scalars().first()
+
+                state_json = json.dumps(state)
+
+                if chat_state:
+                    chat_state.state_data = state_json
+                    chat_state.updated_at = datetime.utcnow()
+                else:
+                    chat_state = ChatState(
+                        user_id=user.id,
+                        state_data=state_json
+                    )
+                    session.add(chat_state)
+
+    async def clear_user_chat_state(self, username: str) -> None:
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if user:
+                result = await session.execute(
+                    select(ChatState).where(ChatState.user_id == user.id)
+                )
+                chat_state = result.scalars().first()
+                if chat_state:
+                    await session.delete(chat_state)
 
 # Create database manager instance
 db_manager = DatabaseManager()
-
-# Initialize database (create tables)
-try:
-    db_manager.create_tables()
-except Exception as e:
-    logger.error(f"Failed to initialize database: {str(e)}")
-    raise

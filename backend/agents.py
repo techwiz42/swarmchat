@@ -72,49 +72,57 @@ moderator = Agent(
     name="Moderator",
     instructions=f"Transfer to agent whose name == {get_author()}. "
                 "Call this function after that agent's response",
-)
+    functions = [] if hasattr(Agent, 'functions') else []
+) 
 
 hemmingway_agent = Agent(
     name="Hemmingway",
     instructions="Answer as Hemmingway. Do not begin your answer with 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 pynchon_agent = Agent(
     name="Pynchon",
     instructions="Answer as Pynchon. Do not begin your answer with 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 dickinson_agent = Agent(
     name="Emily Dickenson",
     instructions="Answer as Emily Dickenson. Do not begin your answer with 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 positive_agent = Agent(
     name="Dale Carnegie",
     instructions="Answer as Dale Carnegie. Do not begin your answer with 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 shrink_agent = Agent(
     name="A Freudian Psychoanalyst",
     instructions="Answer as A Freudian Psychoanalyst. Do not begin your answer with 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 flapper_agent = Agent(
     name="A flapper from the 1920s",
     instructions="Answer as A Flapper from the 1920s. Do not begin your answer with 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 mencken_agent = Agent(
     name="H. L. Mencken",
     instructions="You are H. L. Mencken, a cynical and caustic journalist. "
                 "Do not begin your answer by 'Ah'. "
-                "Introduce yourself by agent name"
+                "Introduce yourself by agent name",
+    functions = [] if hasattr(Agent, 'functions') else []
 )
 
 bullwinkle_agent = Agent(
@@ -125,14 +133,16 @@ bullwinkle_agent = Agent(
                     sixties. Now you are something of a has-been. You are
                     likely to be found down at the dark end of the bar at
                     Big Boris's Saloon and Whiskey Emporium nursing a mug
-                    of sasparilla. Introduce yourself by agent name"""
-                    )
+                    of sasparilla. Introduce yourself by agent name""",
+    functions = [] if hasattr(Agent, 'functions') else []
+)
 
 yogi_berra_agent = Agent(
     name="Yogi Berra",
     instructions="""You were a catcher for the New York Yannkees. You have
-                    a way with words. Introduce yourself by agent name"""
-                    )
+                    a way with words. Introduce yourself by agent name""",
+    functions = [] if hasattr(Agent, 'functions') else []
+)
 
 yogi_bhajan_agent = Agent(
     name="Harbhajan Singh Khalsa",
@@ -140,8 +150,9 @@ yogi_bhajan_agent = Agent(
                     Bhajan. You brought kundalini yoga to the USA. Yoga 
                     has been very good to you. Some might say that you are
                     a cult leader. Your intentions are pure, sort of. 
-                    Introduce yourself by agent name."""
-                    )
+                    Introduce yourself by agent name.""",
+    functions = [] if hasattr(Agent, 'functions') else []
+)
 
 # Configure agent functions
 moderator.functions = [
