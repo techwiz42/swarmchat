@@ -163,33 +163,40 @@ class DatabaseManager:
         """Initialize database connection and session factory"""
         try:
             database_url = os.getenv('DATABASE_URL', 'sqlite:///./swarmchat.db')
-            
-            # Configure SQLite for better concurrency if using SQLite
+        
+            # Configure engine arguments based on database type
+            engine_args = {}
+        
             if database_url.startswith('sqlite'):
-                connect_args = {'check_same_thread': False}
+                # SQLite-specific configuration
+                engine_args = {
+                    'connect_args': {'check_same_thread': False}
+                }
             else:
-                connect_args = {}
-            
+                # Configuration for other databases (PostgreSQL, MySQL, etc.)
+                engine_args = {
+                    'pool_size': 5,
+                    'max_overflow': 10,
+                    'pool_timeout': 30
+                }
+        
             self.engine = create_engine(
                 database_url,
-                connect_args=connect_args,
-                pool_size=5 if not database_url.startswith('sqlite') else None,
-                max_overflow=10 if not database_url.startswith('sqlite') else None,
-                pool_timeout=30 if not database_url.startswith('sqlite') else None
+                **engine_args
             )
-            
+        
             self.SessionLocal = sessionmaker(
                 bind=self.engine,
                 autocommit=False,
                 autoflush=False
             )
-            
+        
             logger.info(f"Database initialized with URL: {database_url}")
-            
+        
         except Exception as e:
             logger.error(f"Database initialization error: {str(e)}")
-            raise
-        
+            raise   
+
     def create_tables(self):
         """Create all database tables"""
         try:
