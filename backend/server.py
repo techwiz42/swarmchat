@@ -129,9 +129,9 @@ app = create_app()
 # Add request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    print(f"\n{'='*50}")
-    print(f"Request: {request.method} {request.url}")
-    print(f"Headers: {request.headers}")
+    #print(f"\n{'='*50}")
+    #print(f"Request: {request.method} {request.url}")
+    #print(f"Headers: {request.headers}")
     
     if request.method == "POST":
         body = await request.body()
@@ -141,8 +141,8 @@ async def log_requests(request: Request, call_next):
             print(f"Body: {body}")
     
     response = await call_next(request)
-    print(f"Status Code: {response.status_code}")
-    print(f"{'='*50}\n")
+    #print(f"Status Code: {response.status_code}")
+    #print(f"{'='*50}\n")
     return response
 
 def main():
