@@ -114,19 +114,34 @@ class DatabaseManager:
     
     async def get_chat_history(self, username: str) -> List[Dict]:
         """Get chat history for current session only."""
+        # First get the user and their state
         async with self.get_session() as session:
-            user = await self.get_user_by_username(username)
+            # Get user
+            result = await session.execute(
+                select(User).where(User.username == username)
+            )
+            user = result.scalars().first()
             if not user:
                 return []
-
-            # Get current session_id from user state
-            user_state = await self.get_user_chat_state(username)
-            current_session = user_state.get('current_session')
         
-            if not current_session:
+            # Get user state in the same session
+            state_result = await session.execute(
+                select(ChatState).where(ChatState.user_id == user.id)
+            )
+            chat_state = state_result.scalars().first()
+        
+            if not chat_state or not chat_state.state_data:
+                return []
+            
+            try:
+                state_data = json.loads(chat_state.state_data)
+                current_session = state_data.get('current_session')
+                if not current_session:
+                    return []
+            except json.JSONDecodeError:
                 return []
 
-            # Add session_id to the query
+            # Now get messages for this session
             result = await session.execute(
                 select(Message)
                 .where(
@@ -145,7 +160,7 @@ class DatabaseManager:
                     "content": h.content if i % 2 == 0 else h.response
                 }
                 for i, h in enumerate(history)
-            ]
+            ]    
 
     async def add_to_chat_history(self, username: str, message: str, response: str) -> None:
         """Add message to current session's chat history."""
@@ -197,38 +212,6 @@ class DatabaseManager:
             )
             session.add(new_user)
             return new_user
-
-    async def get_chat_history(self, username: str) -> List[Dict]:
-        async with self.get_session() as session:
-            user = await self.get_user_by_username(username)
-            if not user:
-                return []
-
-            result = await session.execute(
-                select(Message)
-                .where(Message.user_id == user.id)
-                .order_by(Message.timestamp)
-            )
-            history = result.scalars().all()
-
-            return [
-                {
-                    "role": "user" if i % 2 == 0 else "assistant",
-                    "content": h.content if i % 2 == 0 else h.response
-                }
-                for i, h in enumerate(history)
-            ]
-
-    async def add_to_chat_history(self, username: str, message: str, response: str) -> None:
-        async with self.get_session() as session:
-            user = await self.get_user_by_username(username)
-            if user:
-                chat_history = Message(
-                    user_id=user.id,
-                    content=message,
-                    response=response
-                )
-                session.add(chat_history)
 
     async def get_user_chat_state(self, username: str) -> Dict:
         async with self.get_session() as session:

@@ -57,6 +57,7 @@ const SwarmChat = () => {
       setChatToken(savedChatToken);
       setUsername(savedUsername);
       setIsConnected(true);
+      setInputMessage('');  // Clear input message when restoring session
       fetchHistory(savedAccessToken);
       navigate('/'); // Redirect to chat if already logged in
     }
@@ -108,6 +109,7 @@ const SwarmChat = () => {
       setChatToken(data.chat_token);
       setUsername(data.username);
       setIsConnected(true);
+      setInputMessage('');  // Clear input message on new session
 
       // Save tokens and username
       localStorage.setItem('accessToken', data.access_token);
@@ -223,6 +225,7 @@ const SwarmChat = () => {
       setMessages([]);
       setUsername('');
       setError(null);
+      setInputMessage('');  // Clear input message on logout
       
       // Clear stored tokens
       localStorage.removeItem('accessToken');
