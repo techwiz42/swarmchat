@@ -54,7 +54,6 @@ class TokenResponse(BaseModel):
     """Model for token responses."""
     access_token: str
     token_type: str
-    chat_token: str
     username: str
 
 class MessageResponse(BaseModel):

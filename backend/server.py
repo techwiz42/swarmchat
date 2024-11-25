@@ -22,7 +22,7 @@ from config import JWT_SECRET_KEY, DATABASE_URL, ENVIRONMENT
 load_dotenv()
 
 # Import our components
-from database import db_manager
+from database import engine, Base, db_manager
 from auth import auth_manager
 from routes import router
 from agents import (
@@ -115,10 +115,6 @@ async def create_tables():
 def create_app() -> FastAPI:
     # Initialize FastAPI app
     app = FastAPI(title="SwarmChat API", version="1.0.0")
-
-    #@app.on_event("startup")
-    #async def startup_event():
-    #    await create_tables()
 
     # Add CORS middleware
     app.add_middleware(

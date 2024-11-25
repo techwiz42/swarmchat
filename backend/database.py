@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from datetime import datetime
-import os
+import secrets
+import os 
 from typing import Optional, List, Dict
 import json
 from contextlib import asynccontextmanager
@@ -46,6 +47,7 @@ class Message(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
+    session_id = Column(String, index=True)  # Add this line
     content = Column(Text)
     response = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
@@ -67,15 +69,6 @@ class LoginHistory(Base):
     login_time = Column(DateTime, default=datetime.utcnow)
     ip_address = Column(String)
     success = Column(Boolean, default=True)
-
-class ChatToken(Base):
-    __tablename__ = "chat_tokens"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    token = Column(String, unique=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    is_valid = Column(Boolean, default=True)
 
 class ChatHistory(Base):
     __tablename__ = "chat_history"
@@ -105,6 +98,73 @@ class DatabaseManager:
                 await session.rollback()
                 raise
 
+    async def create_new_session(self, username: str) -> str:
+        """Create a new chat session for user and return session_id."""
+        session_id = secrets.token_urlsafe(16)  # Generate random session ID
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if user:
+                # Store session creation time in user_state
+                new_state = {
+                    "current_session": session_id,
+                    "session_start": datetime.utcnow().isoformat()
+                }
+                await self.update_user_chat_state(username, new_state)
+        return session_id
+    async def get_chat_history(self, username: str) -> List[Dict]:
+        """Get chat history for current session only."""
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if not user:
+                return []
+
+            # Get current session_id from user state
+            user_state = await self.get_user_chat_state(username)
+            current_session = user_state.get('current_session')
+            if not current_session:
+                return []
+
+            result = await session.execute(
+                select(Message)
+                .where(
+                    and_(
+                        Message.user_id == user.id,
+                        Message.session_id == current_session
+                    )
+                )
+                .order_by(Message.timestamp)
+            )
+            history = result.scalars().all()
+
+            return [
+                {
+                    "role": "user" if i % 2 == 0 else "assistant",
+                    "content": h.content if i % 2 == 0 else h.response
+                }
+                for i, h in enumerate(history)
+            ]
+
+    async def add_to_chat_history(self, username: str, message: str, response: str) -> None:
+        """Add message to current session's chat history."""
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if user:
+                # Get current session_id from user state
+                user_state = await self.get_user_chat_state(username)
+                current_session = user_state.get('current_session')
+                
+                if not current_session:
+                    # Create new session if none exists
+                    current_session = await self.create_new_session(username)
+
+                chat_history = Message(
+                    user_id=user.id,
+                    session_id=current_session,
+                    content=message,
+                    response=response
+                )
+                session.add(chat_history)
+
     async def create_tables(self):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
@@ -133,30 +193,6 @@ class DatabaseManager:
             )
             session.add(new_user)
             return new_user
-
-    async def store_chat_token(self, user_id: int, token: str) -> None:
-        async with self.get_session() as session:
-            chat_token = ChatToken(user_id=user_id, token=token)
-            session.add(chat_token)
-
-    async def invalidate_chat_token(self, token: str) -> None:
-        async with self.get_session() as session:
-            result = await session.execute(
-                select(ChatToken).where(ChatToken.token == token)
-            )
-            chat_token = result.scalars().first()
-            if chat_token:
-                chat_token.is_valid = False
-
-    async def validate_chat_token(self, token: str) -> bool:
-        async with self.get_session() as session:
-            result = await session.execute(
-                select(ChatToken).where(
-                    ChatToken.token == token,
-                    ChatToken.is_valid == True
-                )
-            )
-            return result.scalars().first() is not None
 
     async def get_chat_history(self, username: str) -> List[Dict]:
         async with self.get_session() as session:

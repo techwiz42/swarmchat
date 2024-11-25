@@ -73,7 +73,6 @@ class UserCreate(BaseModel):
 
 class Token(BaseModel):
     access_token: str
-    chat_token: str
     token_type: str
     username: str
 
@@ -117,43 +116,33 @@ chat_manager = SwarmChatManager()
 @router.post("/api/token", response_model=TokenResponse)
 async def login_for_access_token(
     request: Request,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(get_db)
+    form_data: OAuth2PasswordRequestForm = Depends()
 ):
-    """Handle user login and token generation."""
     try:
-        logger.info(f"Login attempt for user: {form_data.username}")
-        
         user = await auth_manager.authenticate_user(
             form_data.username,
             form_data.password
         )
         
         if not user:
-            logger.warning(f"Failed login attempt for user: {form_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        # Create tokens
-        chat_token = await chat_manager.create_session(user.username)
+        # Create new session
+        await db_manager.create_new_session(user.username)
+        
         access_token = auth_manager.create_access_token(
             data={"sub": user.username}
         )
         
-        # Log the response
-        response_data = {
+        return {
             "access_token": access_token,
             "token_type": "bearer",
-            "chat_token": chat_token,
             "username": user.username
         }
-        logger.info(f"Successful login response for user {user.username}")
-        
-        return response_data
-        
     except Exception as e:
         logger.error(f"Login error: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -211,8 +200,7 @@ async def register_user(user: UserCreate):
 async def chat(
     message: ChatMessage,
     request: Request,
-    current_user: str = Depends(auth_manager.get_current_user),
-    chat_token: str = Depends(auth_manager.validate_chat_token)
+    current_user: str = Depends(auth_manager.get_current_user)  # Remove chat_token dependency
 ):
     try:
         # Get user's chat history and state
@@ -294,7 +282,6 @@ async def chat(
     message: ChatMessage,
     request: Request,
     current_user: str = Depends(auth_manager.get_current_user),
-    chat_token: str = Depends(auth_manager.validate_chat_token)
 ):
     try:
         # Get user's chat history and state
@@ -368,16 +355,10 @@ async def get_history(current_user: str = Depends(auth_manager.get_current_user)
             detail="An error occurred while retrieving chat history"
         )
 
-# Logout endpoint
 @router.post("/api/logout")
-async def logout(
-    current_user: str = Depends(auth_manager.get_current_user),
-    chat_token: str = Depends(auth_manager.validate_chat_token)
-):
+async def logout(current_user: str = Depends(auth_manager.get_current_user)):  # Remove chat_token dependency
     try:
-        # Invalidate the chat token
-        await db_manager.invalidate_chat_token(chat_token)
-        # Clear user chat state
+        # Just clear user chat state
         await db_manager.clear_user_chat_state(current_user)
         return {"message": "Successfully logged out"}
     except Exception as e:
