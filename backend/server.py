@@ -114,13 +114,22 @@ async def create_tables():
 
 # Create the app object at module level
 app = FastAPI(title="SwarmChat API", version="1.0.0")
+app.include_router(router)
 
-# Add CORS middleware
+# Add CORS middleware with specific origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or specific origins
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "https://swarmchat.me",
+        "https://dev.swarmchat.me"
+        "https://swarmchat.me:3000",
+        "https://dev.swarmchat.me:3001"
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET","POST"],  # Or specific methods ["GET", "POST", "PUT", "DELETE"]
+    allow_headers=["*"],  # Or specific headers
 )
 
