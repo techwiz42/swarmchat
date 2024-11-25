@@ -112,105 +112,15 @@ async def create_tables():
         logging.error(f"Error creating database tables: {e}")
         raise
 
-def create_app() -> FastAPI:
-    # Initialize FastAPI app
-    app = FastAPI(title="SwarmChat API", version="1.0.0")
+# Create the app object at module level
+app = FastAPI(title="SwarmChat API", version="1.0.0")
 
-    # Add CORS middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["http://localhost:3000",
-                      "http://swarmchat.me:3000",
-                      "http://swarmchat.me",
-                      "http://0.0.0.0:3000",
-                      "http://localhost:3001"
-                      "http://dev.swarmchat.me",
-                      "http://dev.swarmchat.me:3001",
-                      "http://0.0.0.0:3001"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-   
-    def redact_sensitive_data(body_str: str) -> str:
-        """Redact sensitive information from request bodies."""
-        try:
-            # Try to parse as JSON first
-            body = json.loads(body_str)
-            sensitive_fields = {'password', 'confirmPassword', 'token', 'access_token', 'refresh_token', 'api_key'}
-        
-            for field in sensitive_fields:
-                if field in body:
-                    body[field] = '[REDACTED]'
-            return json.dumps(body)
-        except json.JSONDecodeError:
-            # If not JSON, try to handle form-urlencoded
-            if 'password=' in body_str:
-                # Use regex to replace password value
-                body_str = re.sub(r'password=([^&]*)', 'password=[REDACTED]', body_str)
-            return body_str
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # or specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    @app.middleware("http")
-    async def log_requests(request: Request, call_next):
-        if request.method == "POST":
-            body = await request.body()
-            try:
-                body_str = body.decode()
-                # Redact sensitive data before logging
-                safe_body = redact_sensitive_data(body_str)
-                logger = logging.getLogger(__name__)
-                logger.info(f"Request Body: {safe_body}")
-                # We need to restore the body content for the request to continue processing
-                await request.json()
-            except:
-                pass
-    
-        response = await call_next(request)
-        return response
-    
-    # Include routes
-    app.include_router(router)
-    
-    return app
-
-def main():
-    # Set up logging
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    
-    # Print environment status
-    logger.info("Starting SwarmChat server...")
-    logger.info("OpenAI API Key status: %s", "Present" if os.getenv("OPENAI_API_KEY") else "Missing")
-    logger.info("Database URL: %s", os.getenv("DATABASE_URL", "sqlite:///./swarmchat.db"))
-    logger.info("Environment: %s", os.getenv("ENVIRONMENT", "development"))
-    
-    # Initialize database
-    try:
-        logger.info("Initializing database...")
-        db_manager.create_tables()
-        logger.info("Database initialized successfully")
-    except Exception as e:
-        logger.error("Database initialization failed", exc_info=True)
-        raise
-    
-    # Create and run app
-    try:
-        app = create_app()
-        config = uvicorn.Config(
-            app,
-            host="0.0.0.0",
-            port=8001,
-            log_level="info"
-        )
-        server = uvicorn.Server(config)
-        server.run()
-    except KeyboardInterrupt:
-        logger.info("Server shutting down by user request...")
-    except Exception as e:
-        logger.error("Server crashed", exc_info=True)
-        raise
-    finally:
-        logger.info("Server shutdown complete")
-
-if __name__ == "__main__":
-    main()
