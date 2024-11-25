@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
@@ -111,6 +111,7 @@ class DatabaseManager:
                 }
                 await self.update_user_chat_state(username, new_state)
         return session_id
+    
     async def get_chat_history(self, username: str) -> List[Dict]:
         """Get chat history for current session only."""
         async with self.get_session() as session:
@@ -121,9 +122,11 @@ class DatabaseManager:
             # Get current session_id from user state
             user_state = await self.get_user_chat_state(username)
             current_session = user_state.get('current_session')
+        
             if not current_session:
                 return []
 
+            # Add session_id to the query
             result = await session.execute(
                 select(Message)
                 .where(
@@ -164,6 +167,7 @@ class DatabaseManager:
                     response=response
                 )
                 session.add(chat_history)
+                print(f"Saved message  Session ID: {current_session}")
 
     async def create_tables(self):
         async with engine.begin() as conn:
