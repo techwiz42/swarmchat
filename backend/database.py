@@ -88,15 +88,32 @@ class ChatState(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 class DatabaseManager:
+    DB_POOL_CONFIG = {
+        'pool_pre_ping': True,
+        'pool_recycle': 3600,
+        'max_overflow': 10
+    }
+
+    def __init__(self):
+        self.engine = create_async_engine(
+            DATABASE_URL,
+            **self.DB_POOL_CONFIG
+        )
+
+    async def handle_db_error(self, error, statement, params):
+        raise DatabaseError(statement, params, error)
+
     @asynccontextmanager
-    async def get_session(self) -> AsyncSession:
-        async with AsyncSessionLocal() as session:
-            try:
-                yield session
-                await session.commit()
-            except:
-                await session.rollback()
-                raise
+    async def get_session(self):
+        session = AsyncSession(self.engine, expire_on_commit=False)
+        try:
+            yield session
+        except Exception as e:
+            await session.rollback()
+            await session.commit()
+            raise
+        finally:
+            await session.close()
 
     async def create_new_session(self, username: str) -> str:
         """Create a new chat session for user and return session_id."""
@@ -161,6 +178,19 @@ class DatabaseManager:
                 }
                 for i, h in enumerate(history)
             ]    
+    async def get_all_user_messages(self, username: str) -> List[Dict]:
+        """Get complete message history across all sessions"""
+        async with self.get_session() as session:
+            user = await self.get_user_by_username(username)
+            if not user:
+                return []
+        
+            result = await session.execute(
+                select(Message)
+                .where(Message.user_id == user.id)
+                .order_by(Message.timestamp)
+            )
+            return result.scalars().all()
 
     async def add_to_chat_history(self, username: str, message: str, response: str) -> None:
         """Add message to current session's chat history."""

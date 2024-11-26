@@ -3,6 +3,7 @@ import logging
 import random
 from typing import List, Optional
 from swarm import Swarm, Agent
+import gc
 from agents import (
     moderator,
     transfer_to_hemmingway,
@@ -23,13 +24,26 @@ class UserSession:
     """Class to manage user sessions."""
 
     def __init__(self, username: str):
+        """
         self.username: str = username
         self.messages: List[dict] = []
         self.client: Swarm = Swarm()
         self.agent: Agent = moderator
         self.lock: asyncio.Lock = asyncio.Lock()
         self.first_message_sent: bool = False
-        logger.info("New session created for user: %s", username)
+        """
+        self.username = username
+        self._messages = []
+        self.cleanup_handlers = []
+        logger.info("New session created for user: %s", self.username)
+
+    def __del__(self):
+        self._messages.clear()
+        gc.collect()
+
+    @property
+    def messages(self):
+        return self._messages.copy()
 
     async def send_first_message(self) -> Optional[str]:
         """Send initial moderator message."""

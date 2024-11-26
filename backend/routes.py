@@ -210,6 +210,17 @@ async def chat(
         # Initialize response variables
         response = None
         new_state = user_state.copy() if user_state else {}
+    
+        all_history = await db_manager.get_all_user_messages(current_user)
+        current_history = await db_manager.get_chat_history(current_user)
+        
+        if not all_history:
+            greeting = f""""Welcome to SwarmChat, {current_user}! I'd love to learn about you.
+                        "What brings you here today?"""
+            return {"response": greeting}
+        elif not current_history:
+            greeting = f"Welcome back, {current_user}! What would you like to discuss today?"
+            return {"response": greeting}
 
         # Check for agent transfer commands
         transfer_command = None
