@@ -29,6 +29,11 @@ const SwarmChat = () => {
   const speechHandlerRef = useRef(null);
   const { isTTSEnabled, isListening, setTTSEnabled, setListening } = useSpeechStore();
 
+  // Add useEffect to monitor messages state
+  useEffect(() => {
+    console.log("Messages updated:", messages);
+  }, [messages]);
+
   useEffect(() => {
     speechHandlerRef.current = new SpeechHandler();
     
@@ -53,20 +58,20 @@ const SwarmChat = () => {
     const savedUsername = localStorage.getItem('username');
     
     if (savedAccessToken && savedChatToken && savedUsername) {
+      console.log("Restoring session from localStorage");
       setAccessToken(savedAccessToken);
       setChatToken(savedChatToken);
       setUsername(savedUsername);
       setIsConnected(true);
-      setInputMessage('');  // Clear input message when restoring session
+      setInputMessage('');
       fetchHistory(savedAccessToken);
-      navigate('/'); // Redirect to chat if already logged in
+      navigate('/');
     }
   }, [navigate]);
 
   const handleIntroDialogClose = (isOpen) => {
     setIsIntroOpen(isOpen);
     if (!isOpen) {
-      // When intro dialog is closed, always navigate to login
       navigate('/login');
     }
   };
@@ -91,6 +96,7 @@ const SwarmChat = () => {
       formData.append('username', username);
       formData.append('password', password);
       
+      console.log("Attempting login...");
       const response = await fetch(`${API_BASE_URL}/token`, {
         method: 'POST',
         headers: {
@@ -105,20 +111,28 @@ const SwarmChat = () => {
       }
 
       const data = await response.json();
+      console.log("Login response:", data);  // Check if initial_message is present
+
       setAccessToken(data.access_token);
       setChatToken(data.chat_token);
       setUsername(data.username);
       setIsConnected(true);
-      setInputMessage('');  // Clear input message on new session
+      setInputMessage('');
+
+      // Add initial message to messages if it exists
+      if (data.initial_message) {
+        console.log("Setting initial message:", data.initial_message);
+        setMessages([{ role: 'assistant', content: data.initial_message }]);
+      }
 
       // Save tokens and username
       localStorage.setItem('accessToken', data.access_token);
       localStorage.setItem('chatToken', data.chat_token);
       localStorage.setItem('username', data.username);
 
-      await fetchHistory(data.access_token);
-      navigate('/'); // Redirect to chat after successful login
+      navigate('/');
     } catch (err) {
+      console.error("Login error:", err);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -127,6 +141,7 @@ const SwarmChat = () => {
 
   const fetchHistory = async (token) => {
     try {
+      console.log("Fetching chat history...");
       const response = await fetch(`${API_BASE_URL}/history`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -138,23 +153,34 @@ const SwarmChat = () => {
       }
 
       const data = await response.json();
+      console.log("History response:", data.messages);
       setMessages(data.messages);
     } catch (error) {
+      console.error("History fetch error:", error);
       setError('Failed to load chat history. Please try refreshing.');
     }
   };
 
-  const handleSendMessage = async (e, autoSend = false) => {
+  const handleSendMessage = async (e) => {
     e?.preventDefault();
-    const currentMessage = inputMessage;
-    if (!currentMessage.trim() || !accessToken || !chatToken || isLoading) return;
+    console.log("handleSendMessage called", { inputMessage, accessToken, chatToken });
+    
+    if (!inputMessage.trim() || !accessToken || isLoading) {
+      console.log("Early return condition met:", { 
+        isEmpty: !inputMessage.trim(), 
+        noToken: !accessToken, 
+        isLoading 
+      });
+      return;
+    }
 
     try {
       setIsLoading(true);
       setError(null);
-      
-      setInputMessage('');
 
+      const currentMessage = inputMessage;
+      setInputMessage('');
+      
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: 'POST',
         headers: {
@@ -165,11 +191,14 @@ const SwarmChat = () => {
         body: JSON.stringify({ content: currentMessage })
       });
 
+      console.log("Chat response status:", response.status);
+
       if (!response.ok) {
         throw new Error(`Failed to send message: ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log("Chat response data:", data);
       
       if (data.response) {
         setMessages(prev => [...prev, 
@@ -186,8 +215,8 @@ const SwarmChat = () => {
         }
       }
     } catch (err) {
+      console.error("Send message error:", err);
       setError(`Failed to send message: ${err.message}`);
-      setInputMessage(currentMessage);
     } finally {
       setIsLoading(false);
     }
@@ -195,9 +224,8 @@ const SwarmChat = () => {
 
   const handleRegistration = async (userData) => {
     try {
-      // After successful registration, automatically log in
       await handleLogin(null, userData.username, userData.password);
-      navigate('/'); // Redirect to chat after successful registration
+      navigate('/');
     } catch (err) {
       setError(err.message);
     }
@@ -205,7 +233,6 @@ const SwarmChat = () => {
 
   const handleLogout = async () => {
     try {
-      // Call logout endpoint if it exists
       if (accessToken && chatToken) {
         await fetch(`${API_BASE_URL}/logout`, {
           method: 'POST',
@@ -218,16 +245,14 @@ const SwarmChat = () => {
     } catch (err) {
       console.error('Logout error:', err);
     } finally {
-      // Clean up local state regardless of logout request success
       setIsConnected(false);
       setAccessToken(null);
       setChatToken(null);
       setMessages([]);
       setUsername('');
       setError(null);
-      setInputMessage('');  // Clear input message on logout
+      setInputMessage('');
       
-      // Clear stored tokens
       localStorage.removeItem('accessToken');
       localStorage.removeItem('chatToken');
       localStorage.removeItem('username');
@@ -237,7 +262,7 @@ const SwarmChat = () => {
         setListening(false);
       }
       
-      navigate('/login'); // Redirect to login after logout
+      navigate('/login');
     }
   };
 
@@ -262,7 +287,6 @@ const SwarmChat = () => {
     }
   };
 
-  // Render different components based on route and auth state
   const renderContent = () => {
     if (isConnected) {
       return (

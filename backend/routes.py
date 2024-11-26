@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 import jwt
 import openai
-from openai import AsyncOpenAI  # New import
+from openai import AsyncOpenAI
 from passlib.context import CryptContext
 import secrets
 import logging
@@ -63,6 +63,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme for token authentication
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
@@ -71,10 +72,8 @@ class UserCreate(BaseModel):
     class Config:
         from_attributes = True
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-    username: str
+class TokenResponseWithMessage(TokenResponse):
+    initial_message: str
 
     class Config:
         from_attributes = True
@@ -113,7 +112,7 @@ AGENT_TRANSFERS = {
 
 chat_manager = SwarmChatManager()
 
-@router.post("/api/token", response_model=TokenResponse)
+@router.post("/api/token", response_model=TokenResponseWithMessage)
 async def login_for_access_token(
     request: Request,
     form_data: OAuth2PasswordRequestForm = Depends()
@@ -137,11 +136,68 @@ async def login_for_access_token(
         access_token = auth_manager.create_access_token(
             data={"sub": user.username}
         )
+
+        # Check user history to determine if new or returning
+        all_history = await db_manager.get_all_user_messages(user.username)
+        current_history = await db_manager.get_chat_history(user.username)
+        
+        # Create conversation context with moderator's instructions
+        user_status = "new" if not all_history else "returning"
+        conversation = [
+            {"role": "system", "content": moderator.instructions},
+            {"role": "system", "content": f"This is a {user_status} user named {user.username}. "
+                                        f"If new user: Welcome them to SwarmChat, express interest in learning about them, "
+                                        f"and ask what brings them here. "
+                                        f"If returning: Welcome them back and ask what they'd like to discuss."}
+        ]
+
+        # Prepare API call parameters
+        completion_params = {
+            "model": moderator.model,
+            "messages": conversation,
+        }
+
+        # Only add tools if they exist and are properly formatted
+        if hasattr(moderator, 'functions') and isinstance(moderator.functions, list):
+            # Convert functions to tools format if needed
+            tools = []
+            for func in moderator.functions:
+                if isinstance(func, dict) and "function" in func:
+                    tools.append({"type": "function", "function": func["function"]})
+                elif isinstance(func, dict):
+                    tools.append({"type": "function", "function": func})
+            
+            if tools:
+                completion_params["tools"] = tools
+                if hasattr(moderator, 'tool_choice') and moderator.tool_choice:
+                    completion_params["tool_choice"] = moderator.tool_choice
+
+        # Get moderator's initial greeting using the OpenAI client
+        chat_completion = await client.chat.completions.create(**completion_params)
+
+        initial_message = chat_completion.choices[0].message.content
+        
+        # Store the initial message in chat history
+        await db_manager.add_to_chat_history(
+            user.username, 
+            None,  # No user message yet
+            initial_message
+        )
+        
+        # Update user's chat state
+        await db_manager.update_user_chat_state(
+            user.username,
+            {
+                "current_agent": moderator.name,
+                "last_interaction": datetime.utcnow().isoformat()
+            }
+        )
         
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "username": user.username
+            "username": user.username,
+            "initial_message": initial_message
         }
     except Exception as e:
         logger.error(f"Login error: {str(e)}", exc_info=True)
@@ -200,7 +256,7 @@ async def register_user(user: UserCreate):
 async def chat(
     message: ChatMessage,
     request: Request,
-    current_user: str = Depends(auth_manager.get_current_user)  # Remove chat_token dependency
+    current_user: str = Depends(auth_manager.get_current_user)
 ):
     try:
         # Get user's chat history and state
@@ -210,17 +266,6 @@ async def chat(
         # Initialize response variables
         response = None
         new_state = user_state.copy() if user_state else {}
-    
-        all_history = await db_manager.get_all_user_messages(current_user)
-        current_history = await db_manager.get_chat_history(current_user)
-        
-        if not all_history:
-            greeting = f""""Welcome to SwarmChat, {current_user}! I'd love to learn about you.
-                        "What brings you here today?"""
-            return {"response": greeting}
-        elif not current_history:
-            greeting = f"Welcome back, {current_user}! What would you like to discuss today?"
-            return {"response": greeting}
 
         # Check for agent transfer commands
         transfer_command = None
@@ -252,7 +297,7 @@ async def chat(
         }
 
         # Only add tools if they exist and are properly formatted
-        if current_agent.functions and isinstance(current_agent.functions, list):
+        if hasattr(current_agent, 'functions') and isinstance(current_agent.functions, list):
             # Convert functions to tools format if needed
             tools = []
             for func in current_agent.functions:
@@ -263,76 +308,11 @@ async def chat(
 
             if tools:
                 completion_params["tools"] = tools
-                if current_agent.tool_choice:
+                if hasattr(current_agent, 'tool_choice') and current_agent.tool_choice:
                     completion_params["tool_choice"] = current_agent.tool_choice
 
         # Call OpenAI with the new client approach
         chat_completion = await client.chat.completions.create(**completion_params)
-
-        response = chat_completion.choices[0].message.content
-
-        # Update state with current agent
-        new_state["current_agent"] = current_agent.name
-        new_state["last_interaction"] = datetime.utcnow().isoformat()
-
-        # Update user state and chat history
-        await db_manager.update_user_chat_state(current_user, new_state)
-        await db_manager.add_to_chat_history(current_user, message.content, response)
-
-        return {"response": response}
-
-    except Exception as e:
-        logger.error(f"Chat error: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="An error occurred processing your message"
-        )
-
-@router.post("/api/chat", response_model=MessageResponse)
-async def chat(
-    message: ChatMessage,
-    request: Request,
-    current_user: str = Depends(auth_manager.get_current_user),
-):
-    try:
-        # Get user's chat history and state
-        user_state = await db_manager.get_user_chat_state(current_user)
-        chat_history = await db_manager.get_chat_history(current_user)
-
-        # Initialize response variables
-        response = None
-        new_state = user_state.copy() if user_state else {}
-
-        # Check for agent transfer commands
-        transfer_command = None
-        for cmd, agent in AGENT_TRANSFERS.items():
-            if f"/{cmd}" in message.content.lower():
-                transfer_command = agent
-                break
-
-        # Process the message
-        current_agent = None
-        if transfer_command:
-            current_agent = transfer_command
-        elif not user_state or 'current_agent' not in user_state:
-            current_agent = moderator
-        else:
-            current_agent = AGENT_TRANSFERS.get(user_state['current_agent'], moderator)
-
-        # Create conversation context with agent's instructions
-        conversation = [
-            {"role": "system", "content": current_agent.instructions},
-            *[{"role": m["role"], "content": m["content"]} for m in chat_history[-5:]],
-            {"role": "user", "content": message.content}
-        ]
-
-        # Call OpenAI with the new client approach
-        chat_completion = await client.chat.completions.create(
-            model=current_agent.model,
-            messages=conversation,
-            tools=current_agent.functions if current_agent.functions else None,
-            tool_choice=current_agent.tool_choice if current_agent.tool_choice else None
-        )
 
         response = chat_completion.choices[0].message.content
 
@@ -367,7 +347,7 @@ async def get_history(current_user: str = Depends(auth_manager.get_current_user)
         )
 
 @router.post("/api/logout")
-async def logout(current_user: str = Depends(auth_manager.get_current_user)):  # Remove chat_token dependency
+async def logout(current_user: str = Depends(auth_manager.get_current_user)):
     try:
         # Just clear user chat state
         await db_manager.clear_user_chat_state(current_user)
