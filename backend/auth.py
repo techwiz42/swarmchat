@@ -24,8 +24,10 @@ class AuthManager:
     async def authenticate_user(self, username: str, password: str):
         user = await db_manager.get_user_by_username(username)
         if not user:
+            print(f"db_manager could not get {username}")
             return False
         if not self.verify_password(password, user.hashed_password):
+            print(f"could not verify {password} against {user.hashed_password}")
             return False
         return user
 

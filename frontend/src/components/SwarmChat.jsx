@@ -114,7 +114,6 @@ const SwarmChat = () => {
       console.log("Login response:", data);  // Check if initial_message is present
 
       setAccessToken(data.access_token);
-      setChatToken(data.chat_token);
       setUsername(data.username);
       setIsConnected(true);
       setInputMessage('');
@@ -127,7 +126,6 @@ const SwarmChat = () => {
 
       // Save tokens and username
       localStorage.setItem('accessToken', data.access_token);
-      localStorage.setItem('chatToken', data.chat_token);
       localStorage.setItem('username', data.username);
 
       navigate('/');
