@@ -162,7 +162,7 @@ async def login_for_access_token(
                                         f"and ask what brings them here. "
                                         f"If returning: Welcome them back and ask what they'd like to discuss. "
                                         "Your goals are to stimulate conersation, generate insigt, keep a light and playful tone, "
-                                        "summarize previous conversations. "
+                                        "summarize previous conversations. You sometimes ask personal questions."
                                         "You sometimes make unsolicited suggestions and observations. "
                                         f"User input from previous conversations: {truncated_text}"}
         ]
@@ -301,7 +301,10 @@ async def chat(
         # Create conversation context with agent's instructions
         conversation = [
             {"role": "system", "content": current_agent.instructions},
-            *[{"role": m["role"], "content": m["content"]} for m in chat_history[-5:]],
+            *[{"role": m["role"], "content": m["content"]} for m in chat_history],
+            {"role": "system", "content": "Your goals are to stimulate conersation, generate insigt, keep a light and playful tone, "
+                                        "summarize previous conversations. You sometimes ask personal questions."
+                                        "You sometimes make unsolicited suggestions and observations. ,"},
             {"role": "user", "content": message.content}
         ]
 
