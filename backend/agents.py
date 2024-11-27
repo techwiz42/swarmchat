@@ -19,6 +19,8 @@ AUTHORS: List[str] = [
     "Yogi Bhajan"
 ]
 
+MODEL = "gpt-4o"
+
 def get_author() -> str:
     """Get a random author from the AUTHORS list."""
     return random.choice(AUTHORS)
@@ -70,6 +72,7 @@ def transfer_to_yogi_bhajan() -> Agent:
 # Agent Definitions
 moderator = Agent(
     name="Moderator",
+    model=MODEL,
     instructions=f"Transfer to agent whose name == {get_author()}. "
                 "Call this function after that agent's response",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -77,6 +80,7 @@ moderator = Agent(
 
 hemmingway_agent = Agent(
     name="Hemmingway",
+    model=MODEL,
     instructions="Answer as Hemmingway. Do not begin your answer with 'Ah'. "
                 "Introduce yourself by agent name",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -84,6 +88,7 @@ hemmingway_agent = Agent(
 
 pynchon_agent = Agent(
     name="Pynchon",
+    model=MODEL,
     instructions="Answer as Pynchon. Do not begin your answer with 'Ah'. "
                 "Introduce yourself by agent name",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -91,6 +96,7 @@ pynchon_agent = Agent(
 
 dickinson_agent = Agent(
     name="Emily Dickenson",
+    model=MODEL,
     instructions="Answer as Emily Dickenson. Do not begin your answer with 'Ah'. "
                 "Introduce yourself by agent name",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -98,6 +104,7 @@ dickinson_agent = Agent(
 
 positive_agent = Agent(
     name="Dale Carnegie",
+    model=MODEL,
     instructions="Answer as Dale Carnegie. Do not begin your answer with 'Ah'. "
                 "Introduce yourself by agent name",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -105,6 +112,7 @@ positive_agent = Agent(
 
 shrink_agent = Agent(
     name="A Freudian Psychoanalyst",
+    model=MODEL,
     instructions="Answer as A Freudian Psychoanalyst. Do not begin your answer with 'Ah'. "
                 "Introduce yourself by agent name",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -112,6 +120,7 @@ shrink_agent = Agent(
 
 flapper_agent = Agent(
     name="A flapper from the 1920s",
+    model=MODEL,
     instructions="Answer as A Flapper from the 1920s. Do not begin your answer with 'Ah'. "
                 "Introduce yourself by agent name",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -119,6 +128,7 @@ flapper_agent = Agent(
 
 mencken_agent = Agent(
     name="H. L. Mencken",
+    model=MODEL,
     instructions="You are H. L. Mencken, a cynical and caustic journalist. "
                 "Do not begin your answer by 'Ah'. "
                 "Introduce yourself by agent name",
@@ -127,6 +137,7 @@ mencken_agent = Agent(
 
 bullwinkle_agent = Agent(
     name="Bullwinkle J. Moose",
+    model=MODEL,
     instructions="""You are Bullwinkle J. Moose, a lovable but somewhat dim
                     talking moose from Frostbite Falls, Minnesota. You were
                     the star of a cartoon show in the late fifties, early
@@ -139,6 +150,7 @@ bullwinkle_agent = Agent(
 
 yogi_berra_agent = Agent(
     name="Yogi Berra",
+    model=MODEL,
     instructions="""You were a catcher for the New York Yannkees. You have
                     a way with words. Introduce yourself by agent name""",
     functions = [] if hasattr(Agent, 'functions') else []
@@ -146,6 +158,7 @@ yogi_berra_agent = Agent(
 
 yogi_bhajan_agent = Agent(
     name="Harbhajan Singh Khalsa",
+    model=MODEL,
     instructions="""You are Harbhajan Singh Khalsa, commonly known as Yogi
                     Bhajan. You brought kundalini yoga to the USA. Yoga 
                     has been very good to you. Some might say that you are

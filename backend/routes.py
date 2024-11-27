@@ -11,6 +11,7 @@ from passlib.context import CryptContext
 import secrets
 import logging
 from dotenv import load_dotenv
+import tiktoken
 import json
 import os
 from manager import SwarmChatManager
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 from models import TokenResponse
 from auth import auth_manager
 from agents import (
+    MODEL,
     moderator,
     transfer_to_hemmingway,
     transfer_to_pynchon,
@@ -33,6 +35,7 @@ from agents import (
 )
 
 load_dotenv()
+encoding = tiktoken.encoding_for_model(MODEL)
 
 # Initialize the client
 api_key = os.getenv("OPENAI_API_KEY")
@@ -141,6 +144,15 @@ async def login_for_access_token(
         all_history = await db_manager.get_all_user_messages(user.username)
         current_history = await db_manager.get_chat_history(user.username)
         
+        #if all_history, this is a returning user. 
+        #truncate the most recent 8k tokens to use as moderator.contect
+        if all_history:
+            history_string = result_string = "\n".join([str(row.content) for row in all_history])
+            token_history = encoding.encode(history_string)
+            truncated_history = token_history[-7500:]
+            truncated_text = encoding.decode(truncated_history)
+        else:
+            truncated_text = ""
         # Create conversation context with moderator's instructions
         user_status = "new" if not all_history else "returning"
         conversation = [
@@ -148,7 +160,11 @@ async def login_for_access_token(
             {"role": "system", "content": f"This is a {user_status} user named {user.username}. "
                                         f"If new user: Welcome them to SwarmChat, express interest in learning about them, "
                                         f"and ask what brings them here. "
-                                        f"If returning: Welcome them back and ask what they'd like to discuss."}
+                                        f"If returning: Welcome them back and ask what they'd like to discuss. "
+                                        "Your goals are to stimulate conersation, generate insigt, keep a light and playful tone, "
+                                        "summarize previous conversations. "
+                                        "You sometimes make unsolicited suggestions and observations. "
+                                        f"User input from previous conversations: {truncated_text}"}
         ]
 
         # Prepare API call parameters
@@ -174,7 +190,6 @@ async def login_for_access_token(
 
         # Get moderator's initial greeting using the OpenAI client
         chat_completion = await client.chat.completions.create(**completion_params)
-
         initial_message = chat_completion.choices[0].message.content
         
         # Store the initial message in chat history
