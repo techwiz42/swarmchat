@@ -303,8 +303,10 @@ async def chat(
             {"role": "system", "content": current_agent.instructions},
             *[{"role": m["role"], "content": m["content"]} for m in chat_history],
             {"role": "system", "content": "Your goals are to stimulate conersation, generate insigt, keep a light and playful tone, "
-                                        "summarize previous conversations. You sometimes ask personal questions."
-                                        "You sometimes make unsolicited suggestions and observations. ,"},
+                                        "You may end your response in one of several ways: you can summarize the user's entry, "
+                                        "You can ask a personal question about the user, "
+                                        "you sometimes make unsolicited suggestions and observations. "
+                                        "Never end your response by asking the user if he or she would like you to tell them more about your response."},
             {"role": "user", "content": message.content}
         ]
 
