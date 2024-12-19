@@ -9,13 +9,7 @@ from agents import (
     transfer_to_hemmingway,
     transfer_to_pynchon,
     transfer_to_dickinson,
-    transfer_to_dale_carnegie,
-    transfer_to_shrink,
-    transfer_to_flapper,
-    transfer_to_bullwinkle,
-    transfer_to_yogi_berra,
-    transfer_to_mencken,
-    transfer_to_yogi_bhajan
+    transfer_to_shrink
 )
 
 logger = logging.getLogger(__name__)
@@ -64,13 +58,7 @@ class UserSession:
             transfer_to_hemmingway,
             transfer_to_pynchon,
             transfer_to_dickinson,
-            transfer_to_dale_carnegie,
-            transfer_to_shrink,
-            transfer_to_flapper,
-            transfer_to_bullwinkle,
-            transfer_to_yogi_berra,
-            transfer_to_mencken,
-            transfer_to_yogi_bhajan
+            transfer_to_shrink
         ]
         selected_func = random.choice(agents)
         new_agent = selected_func()

@@ -25,13 +25,7 @@ from agents import (
     transfer_to_hemmingway,
     transfer_to_pynchon,
     transfer_to_dickinson,
-    transfer_to_dale_carnegie,
-    transfer_to_shrink,
-    transfer_to_flapper,
-    transfer_to_bullwinkle,
-    transfer_to_yogi_berra,
-    transfer_to_yogi_bhajan,
-    transfer_to_mencken
+    transfer_to_shrink
 )
 
 load_dotenv()
@@ -104,13 +98,7 @@ AGENT_TRANSFERS = {
     "hemingway": transfer_to_hemmingway,
     "pynchon": transfer_to_pynchon,
     "dickinson": transfer_to_dickinson,
-    "carnegie": transfer_to_dale_carnegie,
-    "shrink": transfer_to_shrink,
-    "flapper": transfer_to_flapper,
-    "bullwinkle": transfer_to_bullwinkle,
-    "yogi_berra": transfer_to_yogi_berra,
-    "yogi_bhajan": transfer_to_yogi_bhajan,
-    "mencken": transfer_to_mencken
+    "shrink": transfer_to_shrink
 }
 
 chat_manager = SwarmChatManager()
@@ -164,6 +152,8 @@ async def login_for_access_token(
                                         "Your goals are to stimulate conersation, generate insigt, keep a light and playful tone, "
                                         "summarize previous conversations. You sometimes ask personal questions."
                                         "You sometimes make unsolicited suggestions and observations. "
+                                        "Do not always end your responses by asking the user a question. "
+                                        "Do not be overly positive. "
                                         f"User input from previous conversations: {truncated_text}"}
         ]
 
