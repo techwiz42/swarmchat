@@ -69,13 +69,14 @@ const SwarmChat = () => {
     }
   }, [navigate]);
 
+/*
   const handleIntroDialogClose = (isOpen) => {
     setIsIntroOpen(isOpen);
     if (!isOpen) {
       navigate('/login');
     }
   };
-
+*/
   useEffect(() => {
     scrollToBottom();
   }, [messages]);

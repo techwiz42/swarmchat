@@ -1,6 +1,6 @@
 import { Card } from "./ui/card";
-import { Input } from "./ui/input";
 import { Button } from "./ui/button";
+import { Textarea } from "./ui/textarea";
 import { Send } from 'lucide-react';
 import ChatMessage from "./ChatMessage.jsx";
 import './SwarmChat.css'; 
@@ -36,14 +36,20 @@ const ChatInterface = ({
         </div>
         <div className="p-4 border-t">
           <form onSubmit={handleSubmit} className="flex gap-2">
-            <Input
+            <Textarea
               value={inputMessage}
               onChange={onInputChange}
               placeholder="Type your message..."
-              className="flex-1"
+              className="flex-1 min-h-[60px] max-h-[200px] resize-y"
               disabled={isLoading}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
             />
-            <Button type="submit" disabled={isLoading} onClick={handleButtonClick}>
+	    <Button type="submit" disabled={isLoading} onClick={handleButtonClick}>
               <Send className="w-4 h-4" />
             </Button>
           </form>

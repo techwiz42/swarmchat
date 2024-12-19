@@ -59,7 +59,7 @@ const RegisterForm = ({ onRegister }) => {
         throw new Error(data.detail || 'Registration failed');
       }
 
-      const data = await response.json();
+      //const data = await response.json();
       
       // Show success message and redirect to login
       alert('Account created successfully! Please log in.');
