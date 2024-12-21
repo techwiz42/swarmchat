@@ -45,6 +45,7 @@ class User(Base):
     hashed_password = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    email_verified = Column(Boolean, default=False)
 
 class Message(Base):
     __tablename__ = "messages"
@@ -97,6 +98,28 @@ class DatabaseError(Exception):
         self.params = params
         self.original_error = original_error
         super().__init__(f"Database error: {original_error}")
+
+class VerificationToken(Base):
+    __tablename__ = "verification_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    token = Column(String, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    used_at = Column(DateTime, nullable=True)
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    token = Column(String, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    used_at = Column(DateTime, nullable=True)
 
 class DatabaseManager:
     DB_POOL_CONFIG = {
@@ -360,6 +383,68 @@ class DatabaseManager:
                         logger.info(f"Cleared chat state for user {username}")
         except Exception as e:
             logger.error(f"Error clearing user chat state: {e}", exc_info=True)
+            raise
+
+    async def create_verification_token(self, user_id: int, token: str, expires_at: datetime) -> VerificationToken:
+        """Create a new email verification token."""
+        try:
+            async with self.get_session() as session:
+                verification_token = VerificationToken(
+                    user_id=user_id,
+                    token=token,
+                    expires_at=expires_at
+                )
+                session.add(verification_token)
+                await session.commit()
+                await session.refresh(verification_token)
+                return verification_token
+        except Exception as e:
+            logger.error(f"Error creating verification token: {e}")
+            raise
+
+    async def create_password_reset_token(self, user_id: int, token: str, expires_at: datetime) -> PasswordResetToken:
+        """Create a new password reset token."""
+        try:
+            async with self.get_session() as session:
+                reset_token = PasswordResetToken(
+                    user_id=user_id,
+                    token=token,
+                    expires_at=expires_at
+                )
+                session.add(reset_token)
+                await session.commit()
+                await session.refresh(reset_token)
+                return reset_token
+        except Exception as e:
+            logger.error(f"Error creating password reset token: {e}")
+            raise
+
+    async def verify_email(self, user_id: int) -> None:
+        """Mark a user's email as verified."""
+        try:
+            async with self.get_session() as session:
+                await session.execute(
+                    update(User)
+                    .where(User.id == user_id)
+                    .values(email_verified=True)
+                )
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Error verifying email: {e}")
+            raise
+
+    async def update_password(self, user_id: int, hashed_password: str) -> None:
+        """Update a user's password."""
+        try:
+            async with self.get_session() as session:
+                await session.execute(
+                    update(User)
+                    .where(User.id == user_id)
+                    .values(hashed_password=hashed_password)
+                )
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Error updating password: {e}")
             raise
 
 # Create database manager instance

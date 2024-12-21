@@ -369,6 +369,99 @@ async def logout(current_user: str = Depends(auth_manager.get_current_user)):
             detail="An error occurred during logout"
         )
 
+@router.post("/api/request-verification")
+async def request_verification(
+    current_user: str = Depends(auth_manager.get_current_user)
+):
+    try:
+        user = await db_manager.get_user_by_username(current_user)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        if user.email_verified:
+            raise HTTPException(status_code=400, detail="Email already verified")
+            
+        token = await token_manager.create_verification_token(user.id)
+        success = email_service.send_verification_email(
+            user.email,
+            token,
+            os.getenv("BASE_URL", "http://localhost:3000")
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to send verification email")
+            
+        return {"message": "Verification email sent"}
+        
+    except Exception as e:
+        logger.error(f"Error requesting verification: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/verify-email")
+async def verify_email(token: str):
+    try:
+        user_id = await token_manager.verify_email_token(token)
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+            
+        return {"message": "Email verified successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error verifying email: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/request-password-reset")
+async def request_password_reset(email: str):
+    try:
+        user = await db_manager.get_user_by_email(email)
+        if not user:
+            # Return success even if user not found to prevent email enumeration
+            return {"message": "If the email exists, a password reset link will be sent"}
+            
+        token = await token_manager.create_password_reset_token(user.id)
+        success = email_service.send_password_reset_email(
+            email,
+            token,
+            os.getenv("BASE_URL", "http://localhost:3000")
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to send reset email")
+            
+        return {"message": "If the email exists, a password reset link will be sent"}
+        
+    except Exception as e:
+        logger.error(f"Error requesting password reset: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/reset-password")
+async def reset_password(token: str, new_password: str):
+    try:
+        user_id = await token_manager.verify_reset_token(token)
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Invalid or expired token")
+            
+        # Hash the new password
+        hashed_password = auth_manager.get_password_hash(new_password)
+        
+        # Update the user's password
+        async with db_manager.get_session() as session:
+            await session.execute(
+                """
+                UPDATE users
+                SET hashed_password = :password
+                WHERE id = :user_id
+                """,
+                {"password": hashed_password, "user_id": user_id}
+            )
+            await session.commit()
+            
+        return {"message": "Password reset successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error resetting password: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Health check endpoint
 @router.get("/api/health")
 async def health_check():

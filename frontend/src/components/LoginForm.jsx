@@ -87,7 +87,13 @@ const LoginForm = ({
                   className="pl-9"
                 />
               </div>
-            </div>
+	    </div>
+
+ 	  <div className="text-center text-sm text-gray-500">
+            <Link to="/forgot-password" className="text-blue-500 hover:text-blue-600">
+              Forgot Password?
+           </Link>
+          </div>
           </div>
 
           {error && (

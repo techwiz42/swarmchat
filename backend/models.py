@@ -90,3 +90,49 @@ class LoginHistoryResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+class VerificationToken(BaseModel):
+    id: int
+    user_id: int
+    token: str
+    created_at: datetime
+    expires_at: datetime
+    used: bool = False
+    used_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+class PasswordResetToken(BaseModel):
+    id: int
+    user_id: int
+    token: str
+    created_at: datetime
+    expires_at: datetime
+    used: bool = False
+    used_at: datetime | None = None
+
+    class Config:
+        from_attributes = True
+
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+class PasswordResetSubmit(BaseModel):
+    token: str
+    new_password: str
+
+    @validator('new_password')
+    def password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        if not any(c.isupper() for c in v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        if not any(c.islower() for c in v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('Password must contain at least one number')
+        return v
